@@ -4,7 +4,7 @@ import json
 
 # Replace with your actual league ID and week number
 league_id = "1119602622941523968"  # Add your actual league ID
-current_week = 4  # Change this to the current week of the season
+current_week = 3 # Change this to the current week of the season
 start_week = 1  # Start from Week 1
 
 # Placeholder dictionaries for the 5 stats
@@ -20,6 +20,7 @@ roster_bench_points = {}
 player_points_total = {}
 # Placeholder for total player points by position across all weeks
 team_position_points = {}
+discrepancy_data = {}
 # Identify Underperforming Players
 url_players = "https://api.sleeper.app/v1/players/nfl"
 response_players = requests.get(url_players)
@@ -28,6 +29,33 @@ players_data = response_players.json()
 url_rosters = f"https://api.sleeper.app/v1/league/{league_id}/rosters"
 response_rosters = requests.get(url_rosters)
 rosters = response_rosters.json()
+
+
+### For projections
+def get_player_projections(player_id, week, season="2024", season_type="regular", grouping="week"):
+    url = f"https://api.sleeper.com/projections/nfl/player/{player_id}?season_type={season_type}&season={season}&grouping={grouping}"
+    response = requests.get(url)
+    if response.status_code == 200:
+        projection_data = response.json()
+        # Assuming week projections are available, return PPR projection for the given week
+        
+        week_str = str(week)
+        # Check if the week exists in the projection_data dictionary
+        if week_str in projection_data:
+            # Extract the stats for the given week
+            try:
+                week_data = projection_data[week_str]
+                stats = week_data.get('stats', {})
+            except:
+                return 0
+            # Get the pts_ppr value from the stats, defaulting to 0 if not found
+            return stats.get('pts_ppr', 0)
+            # Return 0 if no projection is found for the given week
+        return 0  # Default to 0 if no projection found
+    
+    
+    
+    
 # Loop through each week and fetch matchups
 for week in range(start_week, current_week + 1):
     print(f"Fetching matchups for Week {week}...")
@@ -107,7 +135,8 @@ for week in range(start_week, current_week + 1):
         for player_id in starters:
             player_points = players_points.get(player_id, 0)
             player_position = players_data.get(player_id, {}).get('position', 'Unknown')
-
+            # Get player projections for the current week
+            projected_points = get_player_projections(player_id, week)
             # Accumulate points by position
             if player_position in team_position_points[roster_id]:
                 team_position_points[roster_id][player_position] += player_points
@@ -117,7 +146,16 @@ for week in range(start_week, current_week + 1):
                     team_position_points[roster_id]['FLEX'] += player_points
                 else:
                     print(f"Unknown position: {player_position} for player {player_id}")
-    # Process Waiver Pickups and Trade Impact
+    
+           # Only care about discrepancies where actual points are lower than projections
+            
+            discrepancy = projected_points - player_points # Calculate discrepancy
+            discrepancy_data[player_id] = {
+                    'actual_points': player_points,
+                    'projected_points': projected_points,
+                    'discrepancy': discrepancy,
+                    'week': week
+                }
     for transaction in transactions:
         if transaction['type'] == 'waiver':
             user_id = transaction['roster_ids'][0]
@@ -219,8 +257,7 @@ top_scorers_df = top_scorers_df[['team_name', 'player_name', 'total_points']]
 bench_efficiency_df = bench_efficiency_df[['team_name', 'bench_efficiency']]
 waiver_pickups_df = waiver_pickups_df[['team_name', 'waiver_points']]
 trade_impact_df = trade_impact_df[['team_name', 'trade_impact']]
-underperforming_players_df['player_name'] = underperforming_players_df['player_id'].map(lambda pid: players_data.get(pid, {}).get('full_name', 'Unknown'))
-underperforming_players_df = underperforming_players_df[['player_name', 'total_points']]
+
 # Map roster_id to user_id
 roster_id_to_user_id = {roster['roster_id']: roster['owner_id'] for roster in rosters}
 
@@ -232,6 +269,15 @@ users = response_users.json()
 # Map user display names to their user IDs
 user_id_to_name = {user['user_id']: user['display_name'] for user in users}
 
+discrepancy_df = pd.DataFrame.from_dict(discrepancy_data, orient='index')
+# Map player names to the discrepancy DataFrame
+discrepancy_df['player_name'] = discrepancy_df.index.map(lambda pid: players_data.get(pid, {}).get('full_name', 'Unknown'))
+
+# Reorder columns
+discrepancy_df = discrepancy_df[['player_name', 'actual_points', 'projected_points', 'discrepancy', 'week']]
+
+# Sort by largest discrepancy
+discrepancy_df = discrepancy_df.sort_values(by='discrepancy', ascending=False)
 # Add team name to the DataFrame
 team_position_df['team_name'] = team_position_df.index.map(roster_id_to_user_id).map(user_id_to_name)
 
@@ -246,9 +292,10 @@ print("\nTeam Total Strength by Position:")
 print(team_position_df.head())
 print("\nTop Scorers")
 print(top_scorers_df.head())
-
+print("\nUnderperforming Players:")
+print(underperforming_players_df.head())
 print("\nWaiver Pickups")
-print(waiver_pickups_df.head())
+print(discrepancy_df.head())
 
 print("\nTrade Impact")
 print(trade_impact_df.head())
@@ -265,3 +312,5 @@ underperforming_players_df.to_csv('underperforming_players.csv', index=False)
 
 # Optionally, save DataFrame to CSV
 team_position_df.to_csv('team_position_strength.csv', index=False)
+# Optionally, save DataFrame to CSV
+discrepancy_df.to_csv('underperforming_players.csv', index=False)
