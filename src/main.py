@@ -4,7 +4,7 @@ import json
 
 # Replace with your actual league ID and week number
 league_id = "1119602622941523968"  # Add your actual league ID
-current_week = 3  # Change this to the current week of the season
+current_week = 4  # Change this to the current week of the season
 start_week = 1  # Start from Week 1
 
 # Placeholder dictionaries for the 5 stats
@@ -18,7 +18,16 @@ top_scorers = {}
 roster_player_points = {}
 roster_bench_points = {}
 player_points_total = {}
-
+# Placeholder for total player points by position across all weeks
+team_position_points = {}
+# Identify Underperforming Players
+url_players = "https://api.sleeper.app/v1/players/nfl"
+response_players = requests.get(url_players)
+players_data = response_players.json()
+# Fetch rosters to map roster_id to user_id and team_name
+url_rosters = f"https://api.sleeper.app/v1/league/{league_id}/rosters"
+response_rosters = requests.get(url_rosters)
+rosters = response_rosters.json()
 # Loop through each week and fetch matchups
 for week in range(start_week, current_week + 1):
     print(f"Fetching matchups for Week {week}...")
@@ -84,7 +93,30 @@ for week in range(start_week, current_week + 1):
                 player_points_total[player_id] += points
             else:
                 player_points_total[player_id] = points
+        
+        #### PLAYER POINTS PER POSITION ####
+        roster_id = matchup['roster_id']
+        players_points = matchup.get('players_points', {})
+        starters = matchup.get('starters', [])
 
+        # Initialize team position points if not already done
+        if roster_id not in team_position_points:
+            team_position_points[roster_id] = {'QB': 0, 'RB': 0, 'WR': 0, 'TE': 0, 'FLEX': 0, 'K': 0, 'DEF': 0}
+
+        # For each starter, accumulate points based on their position
+        for player_id in starters:
+            player_points = players_points.get(player_id, 0)
+            player_position = players_data.get(player_id, {}).get('position', 'Unknown')
+
+            # Accumulate points by position
+            if player_position in team_position_points[roster_id]:
+                team_position_points[roster_id][player_position] += player_points
+            else:
+                # Handle FLEX or other positions if needed
+                if player_position in ['RB', 'WR', 'TE']:
+                    team_position_points[roster_id]['FLEX'] += player_points
+                else:
+                    print(f"Unknown position: {player_position} for player {player_id}")
     # Process Waiver Pickups and Trade Impact
     for transaction in transactions:
         if transaction['type'] == 'waiver':
@@ -179,6 +211,9 @@ trade_impact_df['team_name'] = trade_impact_df['user_id'].map(user_id_to_name)
 # Map player_id to player_name in top_scorers_df
 top_scorers_df['player_name'] = top_scorers_df['player_id'].map(lambda pid: players_data.get(pid, {}).get('full_name', 'Unknown'))
 
+
+# Convert team position points to DataFrame
+team_position_df = pd.DataFrame.from_dict(team_position_points, orient='index')
 # Drop unnecessary columns
 top_scorers_df = top_scorers_df[['team_name', 'player_name', 'total_points']]
 bench_efficiency_df = bench_efficiency_df[['team_name', 'bench_efficiency']]
@@ -186,11 +221,29 @@ waiver_pickups_df = waiver_pickups_df[['team_name', 'waiver_points']]
 trade_impact_df = trade_impact_df[['team_name', 'trade_impact']]
 underperforming_players_df['player_name'] = underperforming_players_df['player_id'].map(lambda pid: players_data.get(pid, {}).get('full_name', 'Unknown'))
 underperforming_players_df = underperforming_players_df[['player_name', 'total_points']]
+# Map roster_id to user_id
+roster_id_to_user_id = {roster['roster_id']: roster['owner_id'] for roster in rosters}
+
+# Fetch user data to map user_id to display_name (team name)
+url_users = f"https://api.sleeper.app/v1/league/{league_id}/users"
+response_users = requests.get(url_users)
+users = response_users.json()
+
+# Map user display names to their user IDs
+user_id_to_name = {user['user_id']: user['display_name'] for user in users}
+
+# Add team name to the DataFrame
+team_position_df['team_name'] = team_position_df.index.map(roster_id_to_user_id).map(user_id_to_name)
+
+# Reorder the columns to have team_name first
+team_position_df = team_position_df[['team_name', 'QB', 'RB', 'WR', 'TE', 'FLEX', 'K', 'DEF']]
 
 # Display DataFrames with Pandas methods
 print("Bench Efficiency")
 print(bench_efficiency_df.head())
-
+# Display the DataFrame
+print("\nTeam Total Strength by Position:")
+print(team_position_df.head())
 print("\nTop Scorers")
 print(top_scorers_df.head())
 
@@ -209,3 +262,6 @@ top_scorers_df.to_csv('top_scorers.csv', index=False)
 waiver_pickups_df.to_csv('waiver_pickups.csv', index=False)
 trade_impact_df.to_csv('trade_impact.csv', index=False)
 underperforming_players_df.to_csv('underperforming_players.csv', index=False)
+
+# Optionally, save DataFrame to CSV
+team_position_df.to_csv('team_position_strength.csv', index=False)
