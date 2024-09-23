@@ -180,7 +180,13 @@ discrepancy_df['user_id'] = discrepancy_df['roster_id'].map(roster_id_to_user_id
 discrepancy_df['team_name'] =  discrepancy_df['user_id'].map(user_id_to_name)
 
 top_scorers_df['player_name'] = top_scorers_df['player_id'].map(lambda pid: players_data.get(pid, {}).get('full_name', 'Unknown'))
+#sort to add cumsum 
+discrepancy_df['discrepancy'] = discrepancy_df['discrepancy'] * -1
+# Sort by player and week to ensure cumulative sum is calculated in the correct order
+discrepancy_df = discrepancy_df.sort_values(by=['player_id', 'week'])
 
+# Add a cumulative sum column for discrepancies
+discrepancy_df['cumulative_discrepancy'] = discrepancy_df.groupby('player_id')['discrepancy'].cumsum()
 # Display final DataFrames
 print("Bench Efficiency (Weekly)")
 print(bench_efficiency_df.head())
