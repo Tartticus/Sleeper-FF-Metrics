@@ -118,9 +118,12 @@ for week in range(start_week, current_week + 1):
             actual_points = players_points.get(player_id, 0)
             projected_points = get_player_projections(player_id, week)
             discrepancy = projected_points - actual_points
+    
             weekly_discrepancies.append({
                 'week': week,
                 'player_id': player_id,
+
+                'roster_id': roster_id,
                 'actual_points': actual_points,
                 'projected_points': projected_points,
                 'discrepancy': discrepancy
@@ -172,7 +175,12 @@ trade_impact_df['team_name'] = trade_impact_df['user_id'].map(user_id_to_name)
 
 #Map out names
 discrepancy_df['player_name'] = discrepancy_df['player_id'].map(lambda pid: players_data.get(pid, {}).get('full_name', 'Unknown'))
+discrepancy_df['position'] = discrepancy_df['player_id'].map(lambda pid: players_data.get(pid, {}).get('position', 'Unknown'))
+discrepancy_df['user_id'] = discrepancy_df['roster_id'].map(roster_id_to_user_id)
+discrepancy_df['team_name'] =  discrepancy_df['user_id'].map(user_id_to_name)
+
 top_scorers_df['player_name'] = top_scorers_df['player_id'].map(lambda pid: players_data.get(pid, {}).get('full_name', 'Unknown'))
+
 # Display final DataFrames
 print("Bench Efficiency (Weekly)")
 print(bench_efficiency_df.head())
