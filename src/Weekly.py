@@ -64,6 +64,10 @@ weekly_waiver_pickups = []
 weekly_trade_impact = []
 weekly_discrepancies = []
 
+#injuriesa
+weekly_injury_losses = []
+# Define injury-related statuses
+injury_statuses = ['IR', 'out', 'questionable', 'Out']
 # Loop through each week and fetch matchups
 for week in range(start_week, current_week + 1):
     print(f"Fetching matchups for Week {week}...")
@@ -134,17 +138,32 @@ for week in range(start_week, current_week + 1):
                 'discrepancy': discrepancy
             })
 
+          # Injsry df
+            player_status = players_data.get(player_id, {}).get('injury_status')
+            if player_status in injury_statuses:
+                injury_point_loss = projected_points - actual_points
+                weekly_injury_losses.append({
+                    'week': week,
+                    'player_id': player_id,
+                    'team_name': roster_id,  # Replace with team_name if available
+                    'projected_points': projected_points,
+                    'actual_points': actual_points,
+                    'injury_point_loss': injury_point_loss,
+                    'status': player_status  # Record the player's injury status
+                })
+
     # Process transactions for waiver pickups and trade impact
     for transaction in transactions:
-        if transaction['type'] == 'waiver':
+        if transaction['type'] in ['waiver', 'free_agent']:  # Check if the transaction is either waiver or free_agent
             user_id = transaction['roster_ids'][0]
             added_player_ids = list(transaction['adds'].keys())
             total_waiver_points = sum([player_points_total.get(player_id, 0) for player_id in added_player_ids])
-
+    
             weekly_waiver_pickups.append({
                 'week': week,
                 'roster_id': user_id,
-                'waiver_points': total_waiver_points
+                'waiver_points': total_waiver_points,
+                'transaction_type': transaction['type']  # Add type of transaction (waiver or free_agent)
             })
 
         elif transaction['type'] == 'trade':
@@ -185,7 +204,7 @@ discrepancy_df['user_id'] = discrepancy_df['roster_id'].map(roster_id_to_user_id
 discrepancy_df['team_name'] =  discrepancy_df['user_id'].map(user_id_to_name)
 
 top_scorers_df['player_name'] = top_scorers_df['player_id'].map(lambda pid: players_data.get(pid, {}).get('full_name', 'Unknown'))
-
+top_scorers_df['position'] = discrepancy_df['player_id'].map(lambda pid: players_data.get(pid, {}).get('position', 'Unknown'))
 
 #sort to add cumsum 
 discrepancy_df['discrepancy'] = discrepancy_df['discrepancy'] * -1
@@ -195,13 +214,21 @@ discrepancy_df = discrepancy_df.sort_values(by=['player_id', 'week'])
 # Add a cumulative sum column for discrepancies
 discrepancy_df['cumulative_discrepancy'] = discrepancy_df.groupby('player_id')['discrepancy'].cumsum()
 
+# Convert injury losses to DataFrame
+injury_loss_df = pd.DataFrame(weekly_injury_losses)
+# Convert injury losses to DataFrame
+injury_loss_df['team_name'] =  injury_loss_df['team_name'].map(roster_id_to_user_id)
+injury_loss_df['team_name'] =  injury_loss_df['team_name'].map(user_id_to_name)
+injury_loss_df['player_name'] = injury_loss_df['player_id'].map(lambda pid: players_data.get(pid, {}).get('full_name', 'Unknown'))
 # Display final DataFrames
 print("Bench Efficiency (Weekly)")
 print(bench_efficiency_df.head())
 
 print("\nTop Scorers (Weekly)")
 print(top_scorers_df.head())
-
+# Print the injury point loss data
+print("\nInjury Point Losses (Weekly)")
+print(injury_loss_df.head())
 print("\nWaiver Pickups (Weekly)")
 print(waiver_pickups_df.head())
 
@@ -217,3 +244,4 @@ top_scorers_df.to_csv('weekly_top_scorers.csv', index=False)
 waiver_pickups_df.to_csv('weekly_waiver_pickups.csv', index=False)
 trade_impact_df.to_csv('weekly_trade_impact.csv', index=False)
 discrepancy_df.to_csv('weekly_discrepancies.csv', index=False)
+injury_loss_df.to_csv('injury_loss.csv', index=False)
