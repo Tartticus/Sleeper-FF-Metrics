@@ -156,10 +156,11 @@ for week in range(start_week, current_week + 1):
     for transaction in transactions:
         if transaction['type'] in ['waiver', 'free_agent']:  # Check if the transaction is either waiver or free_agent
             user_id = transaction['roster_ids'][0]
+            
             # Check if 'adds' exists and is not None, otherwise skip the transaction
-        if not transaction.get('adds'):
-            # Skip if 'adds' is None or doesn't exist (no players added)
-            continue
+            if not transaction.get('adds'):
+            
+                continue
             added_player_ids = list(transaction['adds'].keys())
             total_waiver_points = sum([player_points_total.get(player_id, 0) for player_id in added_player_ids])
     
@@ -249,4 +250,3 @@ waiver_pickups_df.to_csv('weekly_waiver_pickups.csv', index=False)
 trade_impact_df.to_csv('weekly_trade_impact.csv', index=False)
 discrepancy_df.to_csv('weekly_discrepancies.csv', index=False)
 injury_loss_df.to_csv('injury_loss.csv', index=False)
-
